@@ -1,0 +1,103 @@
+@using BlazorGridApp.Client.Models
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; padding: 16px; background: var(--neutral-layer-2); border-radius: 4px; margin-bottom: 16px;">
+    @foreach (var field in Fields)
+    {
+        <div @key="GetKey(field)" style="height:62px;">
+            @if (field.ValueType == FilterValueType.Text)
+            {
+                <FluentTextField Value="@GetTextValue(field)"
+                                 ValueChanged="@((string v) => SetTextValue(field, v))"
+                                 Label="@field.Label"
+                                 Placeholder="Filter..." />
+            }
+            else if (field.ValueType == FilterValueType.Number)
+            {
+                <FluentNumberField TValue="decimal?"
+                                   Value="@GetNumberValue(field)"
+                                   ValueChanged="@((decimal? v) => SetNumberValue(field, v))"
+                                   Label="@field.Label"
+                                   Placeholder="0.00" />
+            }
+            else if (field.ValueType == FilterValueType.Date)
+            {
+                <FluentDatePicker Value="@GetDateValue(field)"
+                                  ValueChanged="@((DateTime? v) => SetDateValue(field, v))"
+                                  Label="@field.Label" />
+            }
+            else if (field.ValueType == FilterValueType.Boolean)
+            {
+                <FluentSelect TOption="string"
+                              Value="@GetBoolValue(field)"
+                              ValueChanged="@((string? v) => SetBoolValue(field, v))"
+                              Label="@field.Label"
+                              Style="min-width: 120px">
+                    <FluentOption TOption="string" Value="">All</FluentOption>
+                    <FluentOption TOption="string" Value="true">Yes</FluentOption>
+                    <FluentOption TOption="string" Value="false">No</FluentOption>
+                </FluentSelect>
+            }
+        </div>
+    }
+
+    <div style="display: flex; gap: 8px;">
+        <FluentButton Appearance="Appearance.Accent"  OnClick="OnApplyAsync">Apply</FluentButton>
+        <FluentButton Appearance="Appearance.Neutral" OnClick="OnClearAsync">Clear</FluentButton>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<FilterFieldDefinition> Fields { get; set; } = [];
+    [Parameter] public EventCallback<List<FilterDescriptor>> FiltersApplied { get; set; }
+
+    private readonly Dictionary<string, string>    _textValues   = new();
+    private readonly Dictionary<string, decimal?>  _numberValues = new();
+    private readonly Dictionary<string, DateTime?> _dateValues   = new();
+    private readonly Dictionary<string, bool?>     _boolValues   = new();
+
+    private static string GetKey(FilterFieldDefinition f) => $"{f.Field}_{f.Operator}_{f.Label}";
+
+    private string   GetTextValue(FilterFieldDefinition f)   => _textValues.TryGetValue(GetKey(f), out var v) ? v : string.Empty;
+    private decimal? GetNumberValue(FilterFieldDefinition f) => _numberValues.TryGetValue(GetKey(f), out var v) ? v : null;
+    private DateTime? GetDateValue(FilterFieldDefinition f)  => _dateValues.TryGetValue(GetKey(f), out var v) ? v : null;
+
+    private string GetBoolValue(FilterFieldDefinition f)
+    {
+        if (_boolValues.TryGetValue(GetKey(f), out var v) && v.HasValue)
+            return v.Value ? "true" : "false";
+        return string.Empty;
+    }
+
+    private void SetTextValue(FilterFieldDefinition f, string v)    => _textValues[GetKey(f)]   = v;
+    private void SetNumberValue(FilterFieldDefinition f, decimal? v) => _numberValues[GetKey(f)] = v;
+    private void SetDateValue(FilterFieldDefinition f, DateTime? v)  => _dateValues[GetKey(f)]   = v;
+    private void SetBoolValue(FilterFieldDefinition f, string? v)    => _boolValues[GetKey(f)]   = v switch { "true" => true, "false" => false, _ => null };
+
+    private FilterDescriptor? BuildDescriptor(FilterFieldDefinition f)
+    {
+        var key = GetKey(f);
+        return f.ValueType switch
+        {
+            FilterValueType.Text    when _textValues.TryGetValue(key, out var s)   && !string.IsNullOrWhiteSpace(s) => new FilterDescriptor(f.Field, f.Operator, s),
+            FilterValueType.Number  when _numberValues.TryGetValue(key, out var d) && d.HasValue                    => new FilterDescriptor(f.Field, f.Operator, d.Value),
+            FilterValueType.Date    when _dateValues.TryGetValue(key, out var dt)  && dt.HasValue                   => new FilterDescriptor(f.Field, f.Operator, DateOnly.FromDateTime(dt.Value)),
+            FilterValueType.Boolean when _boolValues.TryGetValue(key, out var b)   && b.HasValue                    => new FilterDescriptor(f.Field, f.Operator, b.Value),
+            _ => null
+        };
+    }
+
+    private async Task OnApplyAsync()
+    {
+        var filters = Fields.Select(BuildDescriptor).OfType<FilterDescriptor>().ToList();
+        await FiltersApplied.InvokeAsync(filters);
+    }
+
+    private async Task OnClearAsync()
+    {
+        _textValues.Clear();
+        _numberValues.Clear();
+        _dateValues.Clear();
+        _boolValues.Clear();
+        await FiltersApplied.InvokeAsync([]);
+    }
+}

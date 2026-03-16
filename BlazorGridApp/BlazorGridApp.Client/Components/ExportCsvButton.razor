@@ -1,0 +1,52 @@
+@using System.Text
+@using BlazorGridApp.Client.Models
+@typeparam T
+@inject IJSRuntime JS
+
+<FluentButton Disabled="@_isExporting" OnClick="@HandleClickAsync">
+    @(_isExporting ? "Exporting..." : "Export to CSV")
+</FluentButton>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<CsvColumnDefinition<T>> Columns { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public Func<Task<IEnumerable<T>>> GetDataAsync { get; set; } = default!;
+
+    [Parameter]
+    public string FileName { get; set; } = "export.csv";
+
+    private bool _isExporting;
+
+    private async Task HandleClickAsync()
+    {
+        _isExporting = true;
+        try
+        {
+            var items = await GetDataAsync();
+            var csv = Build(items);
+            await JS.InvokeVoidAsync("downloadFile", FileName, csv);
+        }
+        finally
+        {
+            _isExporting = false;
+        }
+    }
+
+    private string Build(IEnumerable<T> items)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(string.Join(",", Columns.Select(c => Escape(c.Header))));
+        foreach (var item in items)
+            sb.AppendLine(string.Join(",", Columns.Select(c => Escape(c.GetValue(item)))));
+        return sb.ToString();
+    }
+
+    private static string Escape(string value)
+    {
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        return value;
+    }
+}

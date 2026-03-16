@@ -1,0 +1,81 @@
+﻿@page "/products"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@inject ApiRepository<Product> Repository
+@using BlazorGridApp.Client.Models
+@using BlazorGridApp.Client.Services
+@using System.Globalization
+
+<PageTitle>Products</PageTitle>
+<h1>Products</h1>
+
+<FilterPanel Fields="@FilterFields" FiltersApplied="OnFiltersAppliedAsync" />
+
+<div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
+    <ExportCsvButton T="Product"
+                     Columns="@CsvColumns"
+                     GetDataAsync="@FetchAllAsync"
+                     FileName="products.csv" />
+</div>
+
+<FluentDataGrid TGridItem="Product"
+                ItemsProvider="@productsProvider"
+                Pagination="@pagination">
+    <PropertyColumn Property="@(p => p.Id)" Sortable="true" />
+    <PropertyColumn Property="@(p => p.Name)" Sortable="true" />
+    <PropertyColumn Property="@(p => p.Description)" Sortable="true" />
+    <PropertyColumn Property="@(p => p.IsActive)" Sortable="true" />
+    <PropertyColumn Property="@(p => p.Category)" Sortable="true" />
+    <PropertyColumn Property="@(p => p.Cost)" Sortable="true" Format="C2" />
+    <PropertyColumn Property="@(p => p.ReleaseDate)" Sortable="true" Format="yyyy-MM-dd" />
+</FluentDataGrid>
+
+<FluentPaginator State="@pagination" />
+
+@code {
+    private GridItemsProvider<Product> productsProvider = default!;
+    private readonly PaginationState pagination = new() { ItemsPerPage = 10 };
+    private GridQueryState gridState = new();
+
+    private static readonly IReadOnlyList<FilterFieldDefinition> FilterFields =
+    [
+        new("Name",        "Name contains",         FilterOperator.Contains,    FilterValueType.Text),
+        new("Description", "Description",           FilterOperator.Contains,    FilterValueType.Text),
+        new("Cost",        "Cost min",              FilterOperator.GreaterThan, FilterValueType.Number),
+        new("Cost",        "Cost max",              FilterOperator.LessThan,    FilterValueType.Number),
+        new("IsActive",    "Is Active",             FilterOperator.Equals,      FilterValueType.Boolean),
+        //new("ReleaseDate", "Release from",          FilterOperator.GreaterThan, FilterValueType.Date),
+        //new("ReleaseDate", "Release to (optional)", FilterOperator.LessThan,    FilterValueType.Date),
+    ];
+    private static readonly IReadOnlyList<CsvColumnDefinition<Product>> CsvColumns =
+    [
+        new("Id",          p => p.Id.ToString()),
+        new("Name",        p => p.Name),
+        new("Description", p => p.Description),
+        new("IsActive",    p => p.IsActive.ToString()),
+        new("Category",    p => p.Category),
+        new("Cost",        p => p.Cost.ToString("F2", CultureInfo.InvariantCulture)),
+        new("ReleaseDate", p => p.ReleaseDate.ToString("yyyy-MM-dd")),
+    ];
+
+    protected override void OnInitialized()
+    {
+        productsProvider = async request =>
+        {
+            gridState = GridQueryState.FromRequest(request, pagination.ItemsPerPage, gridState.Filters);
+            var result = await Repository.GetManyAsync(gridState, cancellationToken: request.CancellationToken);
+            return GridItemsProviderResult.From(result.Items, result.Count);
+        };
+    }
+
+    private async Task OnFiltersAppliedAsync(List<FilterDescriptor> filters)
+    {
+        gridState = gridState with { Filters = filters };
+        await pagination.SetCurrentPageIndexAsync(0);
+    }
+
+    private async Task<IEnumerable<Product>> FetchAllAsync()
+    {
+        var result = await Repository.GetManyAsync(gridState, applyPaging: false);
+        return result.Items;
+    }
+}
