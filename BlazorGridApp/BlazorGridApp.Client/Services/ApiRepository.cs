@@ -14,7 +14,7 @@ public class ApiRepository<T>(HttpClient http)
         return (result?.Items ?? [], result?.TotalCount ?? 0);
     }
 
-    protected string ToODataQueryString(GridQueryState state, bool applyPaging = true)
+    protected static string ToODataQueryString(GridQueryState state, bool applyPaging = true)
     {
         var parts = new List<string>();
 
